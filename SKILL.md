@@ -13,6 +13,14 @@ Always run `scripts/fetch-weibo-qr.py` from this skill's directory to fetch the 
 - The script encapsulates browser startup, page polling, QR URL extraction, and retry logic. **Do not** break it into individual `openclaw browser ...` commands.
 - **Do not** fall back to a manual flow — manual steps lose the built-in retry and error handling.
 
+## Setup
+
+Run the setup script before first use to install Playwright + Chromium and configure OpenClaw (idempotent, safe to re-run):
+
+```bash
+bash <SKILL_DIR>/scripts/setup.sh
+```
+
 ## Quick Start
 
 ```bash
