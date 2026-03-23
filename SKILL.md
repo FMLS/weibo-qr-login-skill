@@ -1,6 +1,6 @@
 ---
 name: weibo-qr-login-skill
-description: Fetch Weibo login QR code by running the provided Python script with OpenClaw browser integration. Use when obtaining a Weibo login QR code while preserving browser login state.
+description: Fetch Weibo login QR code via OpenClaw browser integration. Use when the user asks to log in to Weibo or needs a Weibo QR code. Runs a Python script that handles browser startup, page navigation, QR extraction, and retry logic automatically.
 ---
 
 # Weibo QR Login

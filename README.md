@@ -1,6 +1,8 @@
 # Weibo QR Login Skill
 
-A [Cursor Agent Skill](https://docs.cursor.com/context/skills) that automatically fetches a Weibo login QR code via [OpenClaw](https://openclaw.com/) browser integration. After scanning, the browser session retains login cookies for subsequent automation tasks.
+An [OpenClaw](https://openclaw.com/) skill that fetches a Weibo login QR code via headless browser integration. After scanning, the browser session retains login cookies for subsequent automation tasks.
+
+Compatible with any AI agent platform that supports the OpenClaw skill format (Cursor, OpenClaw Agent, etc.).
 
 ## How It Works
 
@@ -14,14 +16,32 @@ The entire flow is encapsulated in `scripts/fetch-weibo-qr.py` with built-in ret
 
 ## Prerequisites
 
+- Linux (Ubuntu 22.04+ / Debian 12+)
+- [OpenClaw](https://openclaw.com/) CLI installed and running
+- Node.js 18+
 - Python 3.9+
-- [OpenClaw](https://openclaw.com/) CLI installed and available in `PATH`
+
+## Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/user/weibo-qr-login-skill.git
+
+# Run the one-click setup (Playwright + Chromium + OpenClaw config)
+bash weibo-qr-login-skill/scripts/setup.sh
+```
+
+The setup script is idempotent and safe to re-run.
 
 ## Usage
 
-### As a Cursor Skill
+### Via AI Agent
 
-Clone this repository locally and add it as a Skill in Cursor. Then simply ask the Agent to "get a Weibo login QR code" in a conversation — it will automatically run the script and display the QR code image.
+Add this skill to your agent's workspace, then ask:
+
+> 获取微博登录二维码
+
+The agent will run the script, display the QR code, and guide you through scanning.
 
 ### Command Line
 
@@ -40,8 +60,9 @@ python3 scripts/fetch-weibo-qr.py --verbose
 
 ```
 weibo-qr-login-skill/
-├── SKILL.md                    # Cursor Skill descriptor defining Agent behavior
+├── SKILL.md                    # Skill descriptor defining agent behavior
 ├── scripts/
+│   ├── setup.sh                # One-click setup (Playwright + Chromium + OpenClaw)
 │   └── fetch-weibo-qr.py      # Core script: fetches Weibo login QR code
 ├── LICENSE                     # MIT License
 ├── .gitignore
