@@ -111,10 +111,10 @@ configure_openclaw() {
     openclaw config set tools.profile full
     openclaw config set tools.deny '[]' --strict-json
 
-    info "重启 gateway..."
-    openclaw gateway restart 2>/dev/null || warn "gateway 重启失败，请手动执行: openclaw gateway restart"
+    nohup bash -c 'sleep 15 && openclaw gateway restart' > /dev/null 2>&1 &
 
-    ok "OpenClaw 配置完成"
+    warn "配置已变更，gateway 将在 15 秒后自动重启"
+    echo "GATEWAY_RESTART_REQUIRED"
 }
 
 # ---------------------------------------------------------------------------
