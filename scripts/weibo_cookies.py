@@ -42,6 +42,7 @@ class CheckResult:
     age_hours: float | None = None
     saved_at: str | None = None
     missing: list[str] = field(default_factory=list)
+    note: str | None = None
 
     def to_dict(self) -> dict:
         return {k: v for k, v in asdict(self).items() if v is not None and v != []}
@@ -98,6 +99,7 @@ def check_validity(
             expires_at=time.strftime(
                 "%Y-%m-%d %H:%M:%S", time.localtime(sub["expires"])
             ),
+            note="expires_at 是微博服务器设定的浏览器端最大有效期，实际 session 可能提前失效",
         )
 
     if meta:
