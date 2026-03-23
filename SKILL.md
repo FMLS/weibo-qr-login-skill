@@ -5,7 +5,9 @@ description: Fetch Weibo login QR code via OpenClaw browser integration. Use whe
 
 # Weibo QR Login
 
-First run `scripts/setup.sh` to ensure the environment is ready, then run `scripts/fetch-weibo-qr.py` to fetch the QR code.
+First run `scripts/setup.sh` to ensure the environment is ready.
+Then check for saved cookies with `scripts/weibo_cookies.py check`
+before falling back to QR code login via `scripts/fetch-weibo-qr.py`.
 
 ## Required Behavior
 
@@ -24,37 +26,66 @@ bash <SKILL_DIR>/scripts/setup.sh
 
 **Check the output carefully:**
 
-- If the output contains `GATEWAY_RESTART_REQUIRED`: the environment was just configured and the system will restart automatically in ~15 seconds. **You must immediately reply** to the user: "环境首次配置完成，系统将在几秒后自动重启。请等待约 20 秒后，重新发送「登录微博」。" **Then stop.** Do not run `fetch-weibo-qr.py` in this turn — the gateway restart will terminate the current session.
-- Otherwise: setup completed successfully (config already correct), proceed to Quick Start below.
+- If the output contains `GATEWAY_RESTART_REQUIRED`: the environment was just configured and the system will restart automatically in ~15 seconds. **You must immediately reply** to the user: "环境首次配置完成，系统将在几秒后自动重启。请等待约 20 秒后，重新发送「登录微博」。" **Then stop.** Do not run any other scripts in this turn — the gateway restart will terminate the current session.
+- Otherwise: setup completed successfully (config already correct), proceed to Login Flow below.
 
-## Quick Start
+## Login Flow
+
+After setup succeeds (no `GATEWAY_RESTART_REQUIRED`), follow this sequence:
+
+**Step 1 — Check cookies:**
 
 ```bash
-# <SKILL_DIR> = absolute path to the directory containing this SKILL.md
+python3 <SKILL_DIR>/scripts/weibo_cookies.py check
+```
+
+- If the output contains `"valid": true`: proceed to Step 2a (restore).
+- If the output contains `"valid": false`: skip to Step 2b (QR login).
+
+**Step 2a — Restore saved session:**
+
+```bash
+python3 <SKILL_DIR>/scripts/weibo_cookies.py restore
+```
+
+Reply to the user that login has been restored from saved cookies. Done.
+
+**Step 2b — QR code login:**
+
+```bash
 python3 <SKILL_DIR>/scripts/fetch-weibo-qr.py
 ```
-
-## Options
-
-```bash
-# Custom output path
-python3 <SKILL_DIR>/scripts/fetch-weibo-qr.py --output /tmp/my-qr.png
-
-# Verbose logs
-python3 <SKILL_DIR>/scripts/fetch-weibo-qr.py --verbose
-```
-
-## After QR Code Is Generated
 
 On success the script prints the local path of the QR PNG (e.g. `/tmp/weibo-qr-1234.png`). The agent **must** then:
 
 1. **Send the image to the user**: Include a standalone `MEDIA: <path>` line in the reply (e.g. `MEDIA: /tmp/weibo-qr-1234.png`). OpenClaw will parse this and deliver the image through the active channel.
 2. **Warn about expiration**: Tell the user the QR code expires in ~1–3 minutes and to scan promptly with the Weibo app (Me → Scan).
 3. **Wait for confirmation**: Ask the user whether the scan succeeded.
-4. **Handle expiration**: If the user reports the code has expired, rerun the script to generate a fresh QR code.
+4. **Handle expiration**: If the user reports the code has expired, rerun `fetch-weibo-qr.py` to generate a fresh QR code.
 
-## Troubleshooting (Script Invocation Only)
+**Step 3 — Save cookies after scan:**
+
+After the user confirms a successful scan:
+
+```bash
+python3 <SKILL_DIR>/scripts/weibo_cookies.py save
+```
+
+Confirm to the user that login succeeded and cookies have been saved for future use.
+
+## Options
+
+```bash
+# Custom QR output path
+python3 <SKILL_DIR>/scripts/fetch-weibo-qr.py --output /tmp/my-qr.png
+
+# Verbose logs
+python3 <SKILL_DIR>/scripts/fetch-weibo-qr.py --verbose
+```
+
+## Troubleshooting
 
 - If command not found: ensure `openclaw` is in `PATH`.
 - If Python missing: use `python3 --version` to verify (requires Python 3.9+).
-- If QR expires: rerun the same Python script to generate a new code.
+- If QR expires: rerun `fetch-weibo-qr.py` to generate a new code.
+- If cookie restore fails: run `weibo_cookies.py check` to inspect, then fall back to QR login.

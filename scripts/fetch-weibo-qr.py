@@ -14,16 +14,19 @@ import time
 from pathlib import Path
 from urllib.request import Request, urlopen
 
+MEDIA_DIR = Path.home() / ".openclaw" / "media" / "browser"
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Fetch Weibo login QR code (browser-session preserving)."
     )
+    default_output = MEDIA_DIR / f"weibo-qr-{int(time.time())}.png"
     parser.add_argument(
         "-o",
         "--output",
-        default=f"/tmp/weibo-qr-{int(time.time())}.png",
-        help="Output PNG path (default: /tmp/weibo-qr-<timestamp>.png)",
+        default=str(default_output),
+        help=f"Output PNG path (default: {MEDIA_DIR}/weibo-qr-<timestamp>.png)",
     )
     parser.add_argument("--verbose", action="store_true", help="Print detailed logs")
     return parser.parse_args()
@@ -98,6 +101,7 @@ def download_qr_image(url: str, output_path: Path) -> None:
 def main() -> int:
     args = parse_args()
     output_path = Path(args.output).expanduser()
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     print("Ensuring browser is running …")
     rc, status_out = run_command(["openclaw", "browser", "status"])
