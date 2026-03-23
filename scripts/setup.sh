@@ -9,6 +9,7 @@
 set -euo pipefail
 
 PLAYWRIGHT_MIRROR="https://npmmirror.com/mirrors/playwright"
+CHROMIUM_PATH=""
 
 # ---------------------------------------------------------------------------
 # 辅助函数
@@ -49,26 +50,14 @@ install_browser() {
     fi
 
     info "安装 Chromium 系统依赖（已安装的会自动跳过）..."
-    npx playwright install-deps chromium 2>&1 || warn "install-deps 有警告（通常不影响使用）"
+    playwright install-deps chromium 2>&1 || warn "install-deps 有警告（通常不影响使用）"
 
-    if npx playwright install chromium --dry-run 2>&1 | grep -q "already installed"; then
-        ok "Chromium 已安装，跳过下载"
-    else
-        info "下载 Chromium（镜像: npmmirror）..."
-        PLAYWRIGHT_DOWNLOAD_HOST="$PLAYWRIGHT_MIRROR" npx playwright install chromium
-    fi
+    info "安装 Chromium（镜像: npmmirror）..."
+    PLAYWRIGHT_DOWNLOAD_HOST="$PLAYWRIGHT_MIRROR" playwright install chromium
 
-    local chromium_path
-    chromium_path=$(node -e "console.log(require('playwright').chromium.executablePath())" 2>/dev/null || echo "")
-    if [[ -z "$chromium_path" || ! -x "$chromium_path" ]]; then
+    CHROMIUM_PATH=$(find ~/.cache/ms-playwright -name "chrome" -type f -path "*/chromium-*/chrome-linux64/chrome" 2>/dev/null | head -1)
+    if [[ -z "$CHROMIUM_PATH" || ! -x "$CHROMIUM_PATH" ]]; then
         fail "未找到 Chromium 可执行文件"
-    fi
-
-    if [[ "$(readlink -f /usr/local/bin/chromium 2>/dev/null)" == "$chromium_path" ]]; then
-        ok "软链接 /usr/local/bin/chromium 已存在，跳过"
-    else
-        info "创建软链接 /usr/local/bin/chromium -> $chromium_path"
-        sudo ln -sf "$chromium_path" /usr/local/bin/chromium
     fi
 
     ok "浏览器就绪"
@@ -78,15 +67,47 @@ install_browser() {
 # Step 3: 配置 OpenClaw
 # ---------------------------------------------------------------------------
 
+config_matches() {
+    python3 << PYEOF
+import json, subprocess, sys
+
+def get(path):
+    r = subprocess.run(["openclaw", "config", "get", path], capture_output=True, text=True)
+    return json.loads(r.stdout) if r.returncode == 0 and r.stdout.strip() else None
+
+def subset(current, expected):
+    if not isinstance(current, dict) or not isinstance(expected, dict):
+        return current == expected
+    return all(k in current and subset(current[k], v) for k, v in expected.items())
+
+browser_expected = {
+    "enabled": True, "headless": True, "noSandbox": True,
+    "executablePath": "$CHROMIUM_PATH",
+    "defaultProfile": "openclaw",
+    "profiles": {"openclaw": {"cdpPort": 18800, "color": "#FF4500"}}
+}
+tools_expected = {"profile": "full", "deny": []}
+
+browser_ok = subset(get("browser"), browser_expected)
+tools_ok = subset(get("tools"), tools_expected)
+sys.exit(0 if browser_ok and tools_ok else 1)
+PYEOF
+}
+
 configure_openclaw() {
+    if config_matches; then
+        ok "OpenClaw 配置已是目标状态，跳过"
+        return
+    fi
+
     info "配置 OpenClaw..."
 
     openclaw config set browser.enabled true
     openclaw config set browser.headless true
     openclaw config set browser.noSandbox true
+    openclaw config set browser.executablePath "$CHROMIUM_PATH"
     openclaw config set browser.defaultProfile openclaw
-    openclaw config set browser.profiles.openclaw.cdpPort 18800 --strict-json
-    openclaw config set browser.profiles.openclaw.color '"#FF4500"'
+    openclaw config set browser.profiles.openclaw '{"cdpPort":18800,"color":"#FF4500"}' --strict-json
     openclaw config set tools.profile full
     openclaw config set tools.deny '[]' --strict-json
 

@@ -53,8 +53,7 @@ def run_openclaw(
             return out
 
         if "gateway closed" in out.lower():
-            log(verbose, f"Gateway closed on attempt {attempt}, restarting browser …")
-            run_command(["openclaw", "browser", "start"])
+            log(verbose, f"Gateway closed on attempt {attempt}, waiting {retry_sleep_s}s …")
             time.sleep(retry_sleep_s)
             continue
 
@@ -101,8 +100,12 @@ def main() -> int:
     output_path = Path(args.output).expanduser()
 
     print("Ensuring browser is running …")
-    run_openclaw(["browser", "start"], verbose=args.verbose)
-    log(args.verbose, "Browser start command completed.")
+    rc, status_out = run_command(["openclaw", "browser", "status"])
+    if rc != 0 or "running: false" in status_out.lower():
+        log(args.verbose, "Browser not running, starting …")
+        run_openclaw(["browser", "start"], verbose=args.verbose)
+    else:
+        log(args.verbose, "Browser already running, skip start.")
 
     print("Opening Weibo login page …")
     run_openclaw(
