@@ -41,9 +41,9 @@ python3 <SKILL_DIR>/scripts/fetch-weibo-qr.py --verbose
 
 ## After QR Code Is Generated
 
-On success the script prints the local path of the QR PNG. The agent **must** then:
+On success the script prints the local path of the QR PNG (e.g. `/tmp/weibo-qr-1234.png`). The agent **must** then:
 
-1. **Show the image to the user**: Use image preview to display the QR PNG so the user can scan it directly.
+1. **Send the image to the user**: Include a standalone `MEDIA: <path>` line in the reply (e.g. `MEDIA: /tmp/weibo-qr-1234.png`). OpenClaw will parse this and deliver the image through the active channel.
 2. **Warn about expiration**: Tell the user the QR code expires in ~1–3 minutes and to scan promptly with the Weibo app (Me → Scan).
 3. **Wait for confirmation**: Ask the user whether the scan succeeded.
 4. **Handle expiration**: If the user reports the code has expired, rerun the script to generate a fresh QR code.
