@@ -200,6 +200,39 @@ def default_runner(args: list[str]) -> tuple[int, str]:
 CDP_PORT = 18800
 
 
+def _extract_json_from_output(raw: str) -> list | dict:
+    """Parse JSON from CLI output that may contain non-JSON log lines.
+
+    Gateway plugins may write log lines (e.g. ``[plugins] ...``) to stdout
+    before the actual JSON payload.  This function skips such noise and
+    returns the first successfully decoded JSON array or object.
+    """
+    stripped = raw.strip()
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+
+    decoder = json.JSONDecoder()
+    search_start = 0
+    while search_start < len(raw):
+        arr_pos = raw.find("[", search_start)
+        obj_pos = raw.find("{", search_start)
+        candidates = [p for p in (arr_pos, obj_pos) if p != -1]
+        if not candidates:
+            break
+        pos = min(candidates)
+        try:
+            obj, _ = decoder.raw_decode(raw, pos)
+            if isinstance(obj, (list, dict)):
+                return obj
+        except json.JSONDecodeError:
+            pass
+        search_start = pos + 1
+
+    raise json.JSONDecodeError("No JSON value found in output", raw, 0)
+
+
 class BrowserBridge:
     """Interact with OpenClaw browser cookies via CLI and Playwright CDP."""
 
@@ -212,8 +245,8 @@ class BrowserBridge:
         if rc != 0:
             raise RuntimeError(f"Failed to get browser cookies:\n{out.strip()}")
         try:
-            cookies = json.loads(out)
-        except json.JSONDecodeError:
+            cookies = _extract_json_from_output(out)
+        except (json.JSONDecodeError, ValueError):
             raise RuntimeError(
                 f"Invalid JSON from browser cookies output:\n{out.strip()}"
             )
@@ -269,8 +302,8 @@ class BrowserBridge:
                 raise RuntimeError(
                     f"Cookie restore via Playwright failed:\n{out.strip()}"
                 )
-            result = json.loads(out.strip().splitlines()[-1])
-            return result.get("count", 0)
+            result = _extract_json_from_output(out)
+            return result.get("count", 0) if isinstance(result, dict) else 0
         finally:
             Path(script_path).unlink(missing_ok=True)
             Path(data_path).unlink(missing_ok=True)
