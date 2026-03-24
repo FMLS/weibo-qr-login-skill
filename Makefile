@@ -3,7 +3,10 @@ SKILL_NAME := weibo-qr-login-skill
 
 SRC_FILES := SKILL.md scripts/fetch-weibo-qr.py scripts/weibo_cookies.py scripts/setup.sh
 
-.PHONY: build clean
+REMOTE_HOST ?=
+REMOTE_DIR  := ~/.openclaw/workspace/skills
+
+.PHONY: build clean deploy
 
 build: clean
 	@mkdir -p $(OUT_DIR)/$(SKILL_NAME)/scripts
@@ -14,3 +17,8 @@ build: clean
 
 clean:
 	@rm -rf $(OUT_DIR)
+
+deploy: build
+	@if [ -z "$(REMOTE_HOST)" ]; then echo "Error: REMOTE_HOST is required. Usage: make deploy REMOTE_HOST=user@host"; exit 1; fi
+	rsync -avz --delete $(OUT_DIR)/$(SKILL_NAME)/ $(REMOTE_HOST):$(REMOTE_DIR)/$(SKILL_NAME)/
+	@echo "Deployed to $(REMOTE_HOST):$(REMOTE_DIR)/$(SKILL_NAME)/"

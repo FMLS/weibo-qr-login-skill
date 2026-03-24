@@ -25,7 +25,7 @@ from typing import Callable
 
 COOKIE_DIR = Path.home() / ".openclaw" / "data" / "weibo"
 WEIBO_DOMAINS = ("weibo", "sina")
-KEY_COOKIES = ("SUB", "SUBP")
+KEY_COOKIES = ("SUB", "SUBP")  # informational only, not required
 
 # ── Types ────────────────────────────────────────────────────────
 
@@ -41,7 +41,7 @@ class CheckResult:
     cookie_type: str | None = None
     age_hours: float | None = None
     saved_at: str | None = None
-    missing: list[str] = field(default_factory=list)
+    key_cookies: list[str] = field(default_factory=list)
     note: str | None = None
 
     def to_dict(self) -> dict:
@@ -76,30 +76,40 @@ def check_validity(
     if now is None:
         now = int(time.time())
 
+    if not cookies:
+        return CheckResult(valid=False, reason="empty_cookies")
+
     cookie_names = {c["name"] for c in cookies}
-    missing = [k for k in KEY_COOKIES if k not in cookie_names]
-    if missing:
+    found_keys = [k for k in KEY_COOKIES if k in cookie_names]
+
+    expired_cookie = next(
+        (c for c in cookies if c.get("expires", -1) > 0 and c["expires"] < now),
+        None,
+    )
+    if expired_cookie:
+        hours_ago = (now - expired_cookie["expires"]) / 3600
         return CheckResult(
-            valid=False, reason="missing_key_cookies", missing=missing
+            valid=False,
+            reason="expired",
+            hours_remaining=round(-hours_ago, 1),
+            key_cookies=found_keys,
         )
 
-    sub = next((c for c in cookies if c["name"] == "SUB"), None)
-    if sub and sub.get("expires", -1) > 0:
-        remaining = sub["expires"] - now
-        hours_left = remaining / 3600
-        if remaining < 0:
-            return CheckResult(
-                valid=False,
-                reason="expired",
-                hours_remaining=round(abs(hours_left), 1),
-            )
+    soonest = min(
+        (c for c in cookies if c.get("expires", -1) > 0),
+        key=lambda c: c["expires"],
+        default=None,
+    )
+    if soonest:
+        remaining = soonest["expires"] - now
         return CheckResult(
             valid=True,
-            hours_remaining=round(hours_left, 1),
+            hours_remaining=round(remaining / 3600, 1),
             expires_at=time.strftime(
-                "%Y-%m-%d %H:%M:%S", time.localtime(sub["expires"])
+                "%Y-%m-%d %H:%M:%S", time.localtime(soonest["expires"])
             ),
-            note="expires_at 是微博服务器设定的浏览器端最大有效期，实际 session 可能提前失效",
+            key_cookies=found_keys,
+            note="expires_at is the browser-side max lifetime set by Weibo; the server session may expire earlier",
         )
 
     if meta:
@@ -109,9 +119,10 @@ def check_validity(
             cookie_type="session",
             age_hours=round(age_hours, 1),
             saved_at=meta.get("saved_at"),
+            key_cookies=found_keys,
         )
 
-    return CheckResult(valid=True, cookie_type="unknown")
+    return CheckResult(valid=True, cookie_type="unknown", key_cookies=found_keys)
 
 
 def format_export(cookies: list[dict]) -> list[str]:
