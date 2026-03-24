@@ -50,6 +50,8 @@ python3 <SKILL_DIR>/scripts/weibo_cookies.py restore
 
 Reply to the user that login has been restored from saved cookies. Done.
 
+If restore fails, skip to Step 2b — the browser may already be logged in, and `fetch-weibo-qr.py` will navigate to the login page to confirm.
+
 **Step 2b — QR code login:**
 
 ```bash
@@ -88,4 +90,4 @@ python3 <SKILL_DIR>/scripts/fetch-weibo-qr.py --verbose
 - If command not found: ensure `openclaw` is in `PATH`.
 - If Python missing: use `python3 --version` to verify (requires Python 3.9+).
 - If QR expires: rerun `fetch-weibo-qr.py` to generate a new code.
-- If cookie restore fails: run `weibo_cookies.py check` to inspect, then fall back to QR login.
+- If cookie restore fails: fall back to QR login — the browser may already be logged in.

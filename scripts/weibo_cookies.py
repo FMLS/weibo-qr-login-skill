@@ -197,7 +197,19 @@ def default_runner(args: list[str]) -> tuple[int, str]:
     return proc.returncode, (proc.stdout or "") + (proc.stderr or "")
 
 
-CDP_PORT = 18800
+CDP_PORT_DEFAULT = 18800
+OPENCLAW_CONFIG = Path.home() / ".openclaw" / "openclaw.json"
+
+
+def _resolve_cdp_port(config_path: Path = OPENCLAW_CONFIG) -> int:
+    """Read CDP port from OpenClaw config file, falling back to default."""
+    try:
+        with open(config_path) as f:
+            config = json.load(f)
+        port = config["browser"]["profiles"]["openclaw"]["cdpPort"]
+        return int(port)
+    except (OSError, KeyError, ValueError, json.JSONDecodeError):
+        return CDP_PORT_DEFAULT
 
 
 def _extract_json_from_output(raw: str) -> list | dict:
@@ -234,11 +246,15 @@ def _extract_json_from_output(raw: str) -> list | dict:
 
 
 class BrowserBridge:
-    """Interact with OpenClaw browser cookies via CLI and Playwright CDP."""
+    """Interact with OpenClaw browser cookies via CLI and raw CDP."""
 
-    def __init__(self, run: CommandRunner = default_runner, cdp_port: int = CDP_PORT):
+    def __init__(
+        self,
+        run: CommandRunner = default_runner,
+        cdp_port: int | None = None,
+    ):
         self._run = run
-        self._cdp_port = cdp_port
+        self._cdp_port = cdp_port if cdp_port is not None else _resolve_cdp_port()
 
     def get_cookies(self) -> list[dict]:
         rc, out = self._run(["openclaw", "browser", "cookies"])
@@ -257,32 +273,15 @@ class BrowserBridge:
         return cookies
 
     def restore_cookies(self, cookies: list[dict]) -> int:
-        """Restore cookies via Playwright CDP (preserves all attributes).
+        """Restore cookies via raw CDP Network.setCookies (preserves all attributes).
 
-        openclaw browser cookies set only supports name/value/url and loses
-        httpOnly, sameSite, expires, and domain-dot prefix. Playwright's
-        context.addCookies() preserves everything.
+        Uses Node.js built-in WebSocket + fetch (no npm packages needed).
+        Connects to Chrome CDP to call Network.setCookies which preserves
+        httpOnly, sameSite, expires, and domain — same as Playwright internally.
         """
         import tempfile
 
-        script = (
-            'const{chromium}=require("playwright");\n'
-            'const fs=require("fs");\n'
-            "(async()=>{\n"
-            f'  const raw=fs.readFileSync(process.argv[1],"utf8");\n'
-            "  const cookies=JSON.parse(raw).map(c=>({\n"
-            '    name:c.name,value:c.value,domain:c.domain,path:c.path||"/",\n'
-            "    secure:!!c.secure,httpOnly:!!c.httpOnly,\n"
-            '    sameSite:c.sameSite||"None",\n'
-            "    expires:c.expires>0?c.expires:undefined\n"
-            "  }));\n"
-            f'  const browser=await chromium.connectOverCDP("http://127.0.0.1:{self._cdp_port}");\n'
-            "  const ctx=browser.contexts()[0]||await browser.newContext();\n"
-            "  await ctx.addCookies(cookies);\n"
-            "  console.log(JSON.stringify({restored:true,count:cookies.length}));\n"
-            "  await browser.close();\n"
-            "})().catch(e=>{console.error(e.message);process.exit(1)});\n"
-        )
+        script = _CDP_RESTORE_SCRIPT.replace("__CDP_PORT__", str(self._cdp_port))
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".js", delete=False) as sf:
             sf.write(script)
@@ -293,20 +292,56 @@ class BrowserBridge:
             data_path = df.name
 
         try:
-            npm_rc, npm_out = self._run(["npm", "root", "-g"])
-            env = f"NODE_PATH={npm_out.strip()} " if npm_rc == 0 else ""
-            rc, out = self._run(
-                ["bash", "-c", f"{env}node {script_path} {data_path}"]
-            )
+            rc, out = self._run(["node", script_path, data_path])
             if rc != 0:
                 raise RuntimeError(
-                    f"Cookie restore via Playwright failed:\n{out.strip()}"
+                    f"Cookie restore via CDP failed:\n{out.strip()}"
                 )
             result = _extract_json_from_output(out)
             return result.get("count", 0) if isinstance(result, dict) else 0
         finally:
             Path(script_path).unlink(missing_ok=True)
             Path(data_path).unlink(missing_ok=True)
+
+
+_CDP_RESTORE_SCRIPT = """\
+const fs = require("fs");
+(async () => {
+  const cookies = JSON.parse(fs.readFileSync(process.argv[2], "utf8")).map(c => ({
+    name: c.name, value: c.value, domain: c.domain, path: c.path || "/",
+    secure: !!c.secure, httpOnly: !!c.httpOnly,
+    sameSite: c.sameSite || "None",
+    expires: c.expires > 0 ? c.expires : undefined,
+  }));
+
+  const port = "__CDP_PORT__";
+  const targets = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
+  const page = targets.find(t => t.type === "page" && t.webSocketDebuggerUrl);
+  if (!page) throw new Error("No page target found on CDP port " + port);
+
+  const ws = new WebSocket(page.webSocketDebuggerUrl);
+  await new Promise((ok, fail) => {
+    ws.addEventListener("open", ok);
+    ws.addEventListener("error", fail);
+  });
+
+  ws.send(JSON.stringify({
+    id: 1, method: "Network.setCookies", params: { cookies },
+  }));
+
+  const reply = await new Promise((ok, fail) => {
+    ws.addEventListener("message", e => {
+      const d = JSON.parse(e.data);
+      if (d.id === 1) ok(d);
+    });
+    setTimeout(() => fail(new Error("CDP timeout after 10s")), 10000);
+  });
+
+  ws.close();
+  if (reply.error) throw new Error(reply.error.message);
+  console.log(JSON.stringify({ restored: true, count: cookies.length }));
+})().catch(e => { console.error(e.message); process.exit(1); });
+"""
 
 
 # ── Subcommands ──────────────────────────────────────────────────
